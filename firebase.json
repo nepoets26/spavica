@@ -1,0 +1,58 @@
+{
+  "hosting": {
+    "public": "build\\web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          {
+            "key": "Access-Control-Allow-Origin",
+            "value": "*"
+          },
+          {
+            "key": "Access-Control-Allow-Methods",
+            "value": "GET,PUT,POST,DELETE,OPTIONS"
+          },
+          {
+            "key": "Access-Control-Allow-Headers",
+            "value": "Content-Type, Authorization"
+          }
+        ]
+      }
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "listening-spaced-repetition",
+          "appId": "1:786672391220:android:20635eb5680d942e5f6661",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "listening-spaced-repetition",
+          "configurations": {
+            "android": "1:786672391220:android:20635eb5680d942e5f6661",
+            "ios": "1:786672391220:ios:942192e9ad378e355f6661",
+            "macos": "1:786672391220:ios:942192e9ad378e355f6661",
+            "web": "1:786672391220:web:dc1d47b2b81ddcdc5f6661",
+            "windows": "1:786672391220:web:24a06a14594a0c635f6661"
+          }
+        }
+      }
+    }
+  }
+}
