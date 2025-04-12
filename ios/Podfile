@@ -1,3 +1,6 @@
+# Thêm dòng này để load Flutter Podhelper
+require_relative '../flutter_tools/bin/podhelper.rb'
+
 platform :ios, '13.0'
 
 target 'Runner' do
