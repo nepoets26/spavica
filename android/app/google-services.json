@@ -2,7 +2,7 @@
   "project_info": {
     "project_number": "786672391220",
     "project_id": "listening-spaced-repetition",
-    "storage_bucket": "listening-spaced-repetition.appspot.com"
+    "storage_bucket": "listening-spaced-repetition.firebasestorage.app"
   },
   "client": [
     {
@@ -14,11 +14,71 @@
       },
       "oauth_client": [
         {
-          "client_id": "786672391220-c619mff2mt03gi1fotigjlqf7lcjq62a.apps.googleusercontent.com",
+          "client_id": "786672391220-an2cdnu5mv5jm6ric9ral21s3717d9jv.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.example.listening_spaced_repetition",
-            "certificate_hash": "33101960b86de2334c6cf3e35cb82966db2d77c9"
+            "certificate_hash": "37f7a7d6c2a6b71d50dcd070ef75db5050ab2031"
+          }
+        },
+        {
+          "client_id": "786672391220-jo28ve5jb5bh0r4oc13l6muia7uhares.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.listening_spaced_repetition",
+            "certificate_hash": "1a2d8c714aacdf50ac599c55a783bcfab6fcf6ac"
+          }
+        },
+        {
+          "client_id": "786672391220-ehepdppklnl53fpn5t4hdnmgvietml8q.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC4SLi6uIEB4D_5Uhl5TZ2fqKHEbO3ci7g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "786672391220-ehepdppklnl53fpn5t4hdnmgvietml8q.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "786672391220-bdcrtbs6r2qrklk8u0v31q47afubqtt5.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.listeningSpacedRepetition"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:786672391220:android:eec910308f5da59e5f6661",
+        "android_client_info": {
+          "package_name": "com.tuanldna.listeningspacedrepetition"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "786672391220-e1q67its4sq6nu1p44jpbfbre172m1s6.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.tuanldna.listeningspacedrepetition",
+            "certificate_hash": "37f7a7d6c2a6b71d50dcd070ef75db5050ab2031"
+          }
+        },
+        {
+          "client_id": "786672391220-q45jojfcdgvnkpn83nc9tvi5vblddqq9.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.tuanldna.listeningspacedrepetition",
+            "certificate_hash": "1a2d8c714aacdf50ac599c55a783bcfab6fcf6ac"
           }
         },
         {

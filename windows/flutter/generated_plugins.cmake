@@ -4,8 +4,10 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   cloud_firestore
+  file_selector_windows
   firebase_auth
   firebase_core
+  flutter_inappwebview_windows
   irondash_engine_context
   super_native_extensions
   url_launcher_windows

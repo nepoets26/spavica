@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/quill_delta.dart';
 import '../services/deck_service.dart';
+import '../services/user_service.dart';
 import '../services/video_card_service.dart';
 import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 import 'dart:async';
@@ -9,6 +10,36 @@ import '/widgets/edit_card_dialog.dart';
 import 'package:flutter_quill/flutter_quill.dart' hide Text;
 import 'dart:async';
 import 'dart:convert';
+// Sử dụng conditional import
+//import 'dart:html' as html;
+import 'dart:math';
+
+// Tạo helper class tương tự như trong home_page.dart
+// class HtmlHelper {
+//   static void disableIframeInteractions() {
+//     if (kIsWeb) {
+//       final iframes = html.document.getElementsByTagName('iframe');
+//       for (var i = 0; i < iframes.length; i++) {
+//         final iframe = iframes[i];
+//         if (iframe is html.HtmlElement) {
+//           iframe.style.pointerEvents = 'none';
+//         }
+//       }
+//     }
+//   }
+//
+//   static void enableIframeInteractions() {
+//     if (kIsWeb) {
+//       final iframes = html.document.getElementsByTagName('iframe');
+//       for (var i = 0; i < iframes.length; i++) {
+//         final iframe = iframes[i];
+//         if (iframe is html.HtmlElement) {
+//           iframe.style.pointerEvents = 'auto';
+//         }
+//       }
+//     }
+//   }
+// }
 
 class VideoStudyScreen extends StatefulWidget {
   final String deckId;
@@ -24,24 +55,18 @@ class VideoStudyScreen extends StatefulWidget {
 }
 
 class _VideoStudyScreenState extends State<VideoStudyScreen> {
-  final DeckService _deckService = DeckService();
   final VideoCardService _videoCardService = VideoCardService();
   late YoutubePlayerController _controller;
   List<VideoCard> _cards = [];
   int _currentCardIndex = 0;
-  Timer? _timer;
   bool _showanswer = false;
   bool _showRatingButtons = false;
   int _againCount = 0;
   bool _isLoading = true;
   bool _isRating = false;
-  String _sortBy = 'interval';
   StreamSubscription? _cardsSubscription;
-  Timer? _replayTimer;
-  Timer? _initialPlaybackTimer;
-  Timer? _playbackTimer; // Thêm biến timer mới để kiểm soát playback
-  Timer? _againTimer; // Thêm biến timer mới cho nút Again
   QuillController? _quillController;
+  late Stream<UserPreferences> _userPrefsStream;
 
 
   @override
@@ -54,9 +79,13 @@ class _VideoStudyScreenState extends State<VideoStudyScreen> {
         showFullscreenButton: true,
         loop: false,
         strictRelatedVideos: true,
-        enableCaption: false,  // Tắt phụ đề
+        enableCaption: false,
       ),
     );
+
+    final userService = UserService();
+    _userPrefsStream = userService.getUserPreferences();
+    
     _loadDueCards();
 
   }
@@ -66,7 +95,7 @@ class _VideoStudyScreenState extends State<VideoStudyScreen> {
       _quillController = QuillController(
         document: Document.fromJson(json),
         selection: const TextSelection.collapsed(offset: 0),
-      );
+      )..readOnly = true;
     } catch (e) {
       // Fallback for plain text if JSON parsing fails
       _quillController = QuillController(
@@ -74,17 +103,16 @@ class _VideoStudyScreenState extends State<VideoStudyScreen> {
             Delta()..insert(answer)
         ),
         selection: const TextSelection.collapsed(offset: 0),
-      );
+      )..readOnly = true;
     }
   }
-  void _sortCards() {
+  void _sortCards(String reviewOrder) {
     setState(() {
-      if (_sortBy == 'interval') {
+      if (reviewOrder == 'IntervalAscending') {
         _cards.sort((a, b) => a.interval.compareTo(b.interval));
-      } else if (_sortBy == 'overdue') {
-        _cards.sort((a, b) => b.overdue.compareTo(a.overdue)); // Changed to sort in descending order
+      } else if (reviewOrder == 'OverdueDescending') {
+        _cards.sort((a, b) => b.overdue.compareTo(a.overdue));
       }
-      // Reset current card index when sorting changes
       _currentCardIndex = 0;
       _againCount = 0;
       if (_cards.isNotEmpty) {
@@ -99,63 +127,95 @@ class _VideoStudyScreenState extends State<VideoStudyScreen> {
       );
       return;
     }
+    
+    //HtmlHelper.disableIframeInteractions();
 
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return EditCardDialog(
           card: _cards[_currentCardIndex],
-          onSave: (updatedCard) {
+          onSave: (updatedCard) async {
+            await _videoCardService.updateVideoCard(updatedCard);
+
+
             setState(() {
               _cards[_currentCardIndex] = updatedCard;
+              _initializeQuillController(updatedCard.answer);
             });
-            _videoCardService.updateVideoCard(updatedCard);
+
+            //HtmlHelper.enableIframeInteractions();
           },
         );
       },
-    );
+    ).then((_) {
+      // Re-enable iframe if dialog is dismissed without saving
+      //HtmlHelper.enableIframeInteractions();
+    });
   }
-  void _replayCurrentCardAtCurrentSpeed()   {
-    if (_cards.isEmpty) return;
+  double _calculateEndTimeOffset(double speed) {
+    // Điều chỉnh hệ số tuyến tính xuống (0.05) nhưng vẫn lớn hơn 0.04
+    return 0.03 * pow(speed - 1.125, 2) + 0.06 * speed;
+  }
 
-    // Cancel existing timer if any
-    _againTimer?.cancel();
+  void _replayCurrentCard() async {
+    if (_cards.isEmpty) return;
 
     setState(() {
       _againCount++;
     });
 
     final currentCard = _cards[_currentCardIndex];
+    final adjustedEndTime = currentCard.endTime - _calculateEndTimeOffset(1.0);
+
     _controller.loadVideoById(
       videoId: currentCard.videoId,
       startSeconds: currentCard.startTime,
+      endSeconds: adjustedEndTime,
     );
 
-    // Set the playback rate without checking if it's valid
-    _controller.setPlaybackRate(currentCard.videoSpeed);
-
-
+    _controller.setPlaybackRate(1.0);
     _controller.playVideo();
+  }
 
-    //final adjustedEndTime = currentCard.endTime -0.05*currentCard.videoSpeed;
+  void _replayCurrentCardAtSlowSpeed() async {
+    if (_cards.isEmpty) return;
 
-
-    _againTimer = Timer.periodic(const Duration(milliseconds: 10), (timer) async {
-
-      //final position = await _controller.currentTime;
-        // Add small buffer (0.1s) to avoid checking too close to end time
-        if (await _controller.currentTime > currentCard.endTime) {
-          timer.cancel();
-          _controller.pauseVideo();
-
-        }
-
+    setState(() {
+      _againCount++;
     });
-    // Create new timer checking position every 100ms
 
+    final currentCard = _cards[_currentCardIndex];
+    final adjustedEndTime = currentCard.endTime - _calculateEndTimeOffset(0.25);
 
-    // Load and play video after setting up the timer
+    _controller.loadVideoById(
+      videoId: currentCard.videoId,
+      startSeconds: currentCard.startTime,
+      endSeconds: adjustedEndTime,
+    );
 
+    _controller.setPlaybackRate(0.25);
+    _controller.playVideo();
+  }
+
+  void _replayCurrentCardAtCurrentSpeed() async {
+    if (_cards.isEmpty) return;
+
+    setState(() {
+      _againCount++;
+    });
+
+    final currentCard = _cards[_currentCardIndex];
+    final adjustedEndTime = currentCard.endTime - _calculateEndTimeOffset(currentCard.videoSpeed);
+
+    _controller.loadVideoById(
+      videoId: currentCard.videoId,
+      startSeconds: currentCard.startTime,
+      endSeconds: adjustedEndTime,
+    );
+
+    _controller.setPlaybackRate(currentCard.videoSpeed);
+    _controller.playVideo();
   }
 
   bool _isValidPlaybackRate(double rate) {
@@ -178,8 +238,7 @@ class _VideoStudyScreenState extends State<VideoStudyScreen> {
 
 
   void _stopTimer() {
-    _timer?.cancel();
-    _timer = null;
+    // Xóa các biến Timer không cần thiết
   }
 
   void _loadDueCards() {
@@ -194,16 +253,15 @@ class _VideoStudyScreenState extends State<VideoStudyScreen> {
           (cards) {
         print('VideoStudyScreen: Received ${cards.length} due cards');
         if (!_isRating) {
-          setState(() {
-            _cards = cards;
-            _sortCards(); // Sort cards after loading
-            _isLoading = false;
-            if (_cards.isEmpty) {
-              print('VideoStudyScreen: No cards to load');
-            } else {
-              print('VideoStudyScreen: Loading video at current index');
-              _loadVideo(_cards[_currentCardIndex]);
-            }
+          _userPrefsStream.listen((prefs) {
+            setState(() {
+              _cards = cards;
+              _sortCards(prefs.reviewOrder);
+              _isLoading = false;
+              if (_cards.isNotEmpty) {
+                _loadVideo(_cards[_currentCardIndex]);
+              }
+            });
           });
         }
       },
@@ -222,79 +280,27 @@ class _VideoStudyScreenState extends State<VideoStudyScreen> {
   }
 
 
-  void _loadVideo(VideoCard card) {
-    // Cancel existing timer
-    _playbackTimer?.cancel();
-
-    // Initialize QuillController with the card's answer
+  void _loadVideo(VideoCard card) async {
     _initializeQuillController(card.answer);
 
+    final adjustedEndTime = card.endTime - _calculateEndTimeOffset(card.videoSpeed);
+    
     _controller.loadVideoById(
       videoId: card.videoId,
       startSeconds: card.startTime,
+      endSeconds: adjustedEndTime,
     );
 
     _controller.setPlaybackRate(card.videoSpeed);
     _controller.playVideo();
-
-    _playbackTimer = Timer.periodic(const Duration(milliseconds: 10), (timer) async {
-      if (await _controller.currentTime > card.endTime) {
-        _controller.pauseVideo();
-        timer.cancel();
-      }
-    });
   }
   Widget _buildAnswerDisplay() {
     if (_quillController == null) return Container();
 
     return QuillEditor.basic(
       controller: _quillController!,
-
-
     );
   }
-
-  void _replayCurrentCard() {
-    if (_cards.isEmpty) return;
-
-    // Cancel existing timer if any
-    _againTimer?.cancel();
-
-    setState(() {
-      _againCount++;
-    });
-
-
-    final currentCard = _cards[_currentCardIndex];
-    _controller.loadVideoById(
-      videoId: currentCard.videoId,
-      startSeconds: currentCard.startTime,
-    );
-
-    // Always set to default speed (1.0) for normal "Again" button
-    _controller.setPlaybackRate(1.0);
-
-    _controller.playVideo();
-    //final adjustedEndTime = currentCard.endTime -0.05;
-
-    // Create new timer checking position every 100ms
-    _againTimer = Timer.periodic(const Duration(milliseconds: 10), (timer) async {
-
-        //final position = await _controller.currentTime;
-
-
-        // Add small buffer (0.1s) to avoid checking too close to end time
-        if (await _controller.currentTime > currentCard.endTime) {
-          _controller.pauseVideo();
-          timer.cancel();
-        }
-
-    });
-
-    // Load and play video after setting up the timer
-
-  }
-
 
   void _toggleShowanswer() {
     setState(() {
@@ -380,21 +386,21 @@ class _VideoStudyScreenState extends State<VideoStudyScreen> {
     ];
 
     int calculateNewInterval(int currentInterval, int rating) {
-      if (currentInterval <= 2) {
+      if ((currentInterval + currentOverdue) <= 2) {
         return rating.clamp(1, 5);
       } else {
-        double overdueFactor = (currentOverdue > 0) ? (1 + currentOverdue * 0.1) : 1.0;
+
         switch (rating) {
           case 1:
             return 1;
           case 2:
-            return ((currentInterval + 1) / 2 * overdueFactor).round();
+            return (((currentInterval + currentOverdue) + 1) / 2 ).round();
           case 3:
-            return (currentInterval * overdueFactor).round();
+            return (currentInterval + currentOverdue);
           case 4:
-            return (currentInterval * 1.5 * overdueFactor).round();
+            return ((currentInterval + currentOverdue) * 2 );
           case 5:
-            return (currentInterval * 2 * overdueFactor).round();
+            return ((currentInterval + currentOverdue) * 3 );
           default:
             return currentInterval;
         }
@@ -434,7 +440,7 @@ class _VideoStudyScreenState extends State<VideoStudyScreen> {
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
               Text(
-                  'Current interval: $currentInterval days',
+                  'Current interval: $currentInterval ${currentInterval == 1 ? 'day' : 'days'}',
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)
               ),
               if (widget.isSpeedDeck) ...[
@@ -461,7 +467,7 @@ class _VideoStudyScreenState extends State<VideoStudyScreen> {
                   double newSpeed = widget.isSpeedDeck
                       ? calculateNewSpeed(currentSpeed, data['rating'] as int)
                       : currentSpeed;
-                  String speedChangeText = widget.isSpeedDeck ? '${newSpeed} x' : '';
+                  String speedChangeText = widget.isSpeedDeck ? '${newSpeed}x' : '';
 
                   return SizedBox(
                     width: buttonWidth - 4, // -4 for spacing between buttons
@@ -489,7 +495,7 @@ class _VideoStudyScreenState extends State<VideoStudyScreen> {
                         FittedBox(
                           fit: BoxFit.scaleDown,
                           child: Text(
-                            '$newInterval days',
+                            '$newInterval ${newInterval == 1 ? 'day' : 'days'}',
                             style: TextStyle(fontSize: 12),
                             textAlign: TextAlign.center,
                           ),
@@ -640,37 +646,6 @@ class _VideoStudyScreenState extends State<VideoStudyScreen> {
       runSpacing: 8,
       alignment: WrapAlignment.start,
       children: [
-        // Add sort dropdown
-        Container(
-          height: 36,
-          padding: EdgeInsets.symmetric(horizontal: 8),
-          decoration: BoxDecoration(
-            border: Border.all(color: Theme.of(context).primaryColor),
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: DropdownButton<String>(
-            value: _sortBy,
-            underline: Container(), // Remove the default underline
-            items: [
-              DropdownMenuItem(
-                value: 'interval',
-                child: Text('Sort by Interval'),
-              ),
-              DropdownMenuItem(
-                value: 'overdue',
-                child: Text('Sort by Overdue'),
-              ),
-            ],
-            onChanged: (String? newValue) {
-              if (newValue != null) {
-                setState(() {
-                  _sortBy = newValue;
-                  _sortCards();
-                });
-              }
-            },
-          ),
-        ),
         SizedBox(
           height: 36,
           child: ElevatedButton(
@@ -681,15 +656,22 @@ class _VideoStudyScreenState extends State<VideoStudyScreen> {
         SizedBox(
           height: 36,
           child: ElevatedButton(
-            onPressed: _replayCurrentCard,
-            child: Text('Again'),
+            onPressed: _replayCurrentCardAtCurrentSpeed,
+            child: Text('Again at Video Speed (${_cards[_currentCardIndex].videoSpeed}x)'),
           ),
         ),
         SizedBox(
           height: 36,
           child: ElevatedButton(
-            onPressed: _replayCurrentCardAtCurrentSpeed,
-            child: Text('Again at Video Speed (${_cards[_currentCardIndex].videoSpeed}x)'),
+            onPressed: _replayCurrentCard,
+            child: Text('Again at 1x'),
+          ),
+        ),
+        SizedBox(
+          height: 36,
+          child: ElevatedButton(
+            onPressed: _replayCurrentCardAtSlowSpeed,
+            child: Text('Again at 0.25x'),
           ),
         ),
         SizedBox(
@@ -715,11 +697,9 @@ class _VideoStudyScreenState extends State<VideoStudyScreen> {
 
   @override
   void dispose() {
-    _playbackTimer?.cancel();
-    _againTimer?.cancel();
-    _cardsSubscription?.cancel();
     _controller.close();
     _quillController?.dispose();
+    _cardsSubscription?.cancel();
     super.dispose();
   }
 }

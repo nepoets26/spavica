@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'video_study_screen.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'dart:convert';
+import 'dart:async';
 
 class ManageCardsScreen extends StatefulWidget {
   const ManageCardsScreen({Key? key}) : super(key: key);
@@ -27,12 +28,23 @@ class _ManageCardsScreenState extends State<ManageCardsScreen> {
   OverlayEntry? _overlayEntry;
   String _sortField = 'videoTitle';
   bool _sortAscending = true;
+  int _currentTabIndex = 0;
+  final StreamController<String> _cardUpdateController = StreamController<String>.broadcast();
+
+  @override
+  void initState() {
+    super.initState();
+    // Kiểm tra và xóa vĩnh viễn các thẻ và bộ thẻ đã bị xóa tạm thời quá 30 ngày
+
+
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
     _newDeckController.dispose();
     _removeOverlay();
+    _cardUpdateController.close();
     super.dispose();
   }
   void _clearSearch() {
@@ -48,68 +60,6 @@ class _ManageCardsScreenState extends State<ManageCardsScreen> {
       _searchQuery = _searchController.text.trim();
       _isSearching = _searchQuery.isNotEmpty;
     });
-  }
-  void _showDeleteConfirmation(BuildContext context, VideoCard card) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Delete Card'),
-          content: Text('Are you sure you want to delete "${card.videoTitle}"?'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop(); // Đóng dialog
-              },
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () async {
-                // Đóng dialog
-                Navigator.of(context).pop();
-
-                try {
-                  // Thực hiện xóa
-                  await _videoCardService.deleteVideoCard(card.id!);
-
-                  // Hiển thị thông báo thành công
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: const Text('Card deleted successfully.'),
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      action: SnackBarAction(
-                        label: 'Close',
-                        onPressed: () {
-                          ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                        },
-                      ),
-                    ),
-                  );
-                } catch (e) {
-                  // Hiển thị thông báo lỗi nếu có
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Error deleting card: ${e.toString()}'),
-                      backgroundColor: Colors.red,
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  );
-                }
-              },
-              child: const Text('remove', style: TextStyle(color: Colors.red)),
-            ),
-          ],
-        );
-      },
-    );
   }
 
   @override
@@ -167,19 +117,27 @@ class _ManageCardsScreenState extends State<ManageCardsScreen> {
       length: 3,
       child: Column(
         children: [
-          const TabBar(
-            tabs: [
+          TabBar(
+            tabs: const [
               Tab(text: 'Deck\'s Cards'),
-              Tab(text: 'Today\'s New Cards'),
-              Tab(text: 'Today\'s Reviewed Cards'),
+              Tab(text: 'Today\'s Cards'),
+              Tab(text: 'Deleted Decks/Cards'),
             ],
+            onTap: (index) {
+              if (_currentTabIndex != index) {  // Chỉ cập nhật khi tab thực sự thay đổi
+                setState(() {
+                  _currentTabIndex = index;
+                });
+              }
+            },
           ),
           Expanded(
-            child: TabBarView(
+            child: IndexedStack(  // Thay TabBarView bằng IndexedStack
+              index: _currentTabIndex,
               children: [
                 _buildDeckList(),
-                _buildTodayCardList(),
-                _buildTodayReviewedCardList(),
+                _buildTodayCardsList(),
+                _buildDeletedCardsList(),
               ],
             ),
           ),
@@ -187,51 +145,151 @@ class _ManageCardsScreenState extends State<ManageCardsScreen> {
       ),
     );
   }
-  Widget _buildTodayReviewedCardList() {
-    return StreamBuilder<List<VideoCard>>(
-      stream: _videoCardService.getTodayReviewedCards(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
+  Widget _buildTodayCardsList() {
+    if (_currentTabIndex != 1) {
+      return Container();
+    }
 
-        if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        }
-
-        final cards = snapshot.data ?? [];
-
-        return Column(
-          children: [
-            // Header with card count
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'Total cards: ${cards.length}',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+    return Column(
+      children: [
+        Expanded(
+          child: DefaultTabController(
+            length: 2,
+            child: Column(
+              children: [
+                TabBar(
+                  tabs: const [
+                    Tab(text: 'New Cards'),
+                    Tab(text: 'Reviewed Cards'),
+                  ],
+                ),
+                Expanded(
+                  child: TabBarView(
+                    children: [
+                      _buildTodayNewCardsList(),
+                      _buildTodayReviewedCardsList(),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
+          ),
+        ),
+      ],
+    );
+  }
+  Widget _buildTodayNewCardsList() {
+    List<VideoCard>? currentCards;
 
-            // Card list
-            Expanded(
-              child: cards.isEmpty
-                  ? const Center(child: Text('No cards reviewed today'))
-                  : ListView.builder(
-                itemCount: cards.length,
-                itemBuilder: (context, index) => _buildCardItem(cards[index]),
-              ),
-            ),
-          ],
+    return StatefulBuilder(
+      builder: (context, setState) {
+        return StreamBuilder<List<VideoCard>>(
+          stream: _videoCardService.getTodayVideoCards(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting && currentCards == null) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (snapshot.hasError) {
+              return Center(child: Text('Error: ${snapshot.error}'));
+            }
+
+            currentCards = snapshot.data ?? currentCards ?? [];
+
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Total cards: ${currentCards!.length}',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: currentCards!.isEmpty
+                      ? const Center(child: Text('No cards added today'))
+                      : ListView.builder(
+                          itemCount: currentCards!.length,
+                          itemBuilder: (context, index) => _buildCardItem(
+                            currentCards![index],
+                            onEdit: () {
+                              _showEditDialog(context, currentCards![index]).then((_) {
+
+                              });
+                            },
+                          ),
+                        ),
+                ),
+              ],
+            );
+          },
         );
-      },
+      }
+    );
+  }
+  Widget _buildTodayReviewedCardsList() {
+    List<VideoCard>? currentCards;
+
+    return StatefulBuilder(
+      builder: (context, setState) {
+        return StreamBuilder<List<VideoCard>>(
+          stream: _videoCardService.getTodayReviewedCards(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting && currentCards == null) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (snapshot.hasError) {
+              return Center(child: Text('Error: ${snapshot.error}'));
+            }
+
+            currentCards = snapshot.data ?? currentCards ?? [];
+
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Total cards: ${currentCards!.length}',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: currentCards!.isEmpty
+                      ? const Center(child: Text('No cards reviewed today'))
+                      : ListView.builder(
+                          itemCount: currentCards!.length,
+                          itemBuilder: (context, index) => _buildCardItem(
+                            currentCards![index],
+                            onEdit: () {
+                              _showEditDialog(context, currentCards![index]).then((_) {
+
+                              });
+                            },
+                          ),
+                        ),
+                ),
+              ],
+            );
+          },
+        );
+      }
     );
   }
   Widget _buildSearchResults() {
@@ -258,54 +316,11 @@ class _ManageCardsScreenState extends State<ManageCardsScreen> {
       },
     );
   }
-  Widget _buildTodayCardList() {
-    return StreamBuilder<List<VideoCard>>(
-      stream: _videoCardService.getTodayVideoCards(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        }
-
-        final cards = snapshot.data ?? [];
-
-        return Column(
-          children: [
-            // Header với số lượng card
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'Total cards: ${cards.length}',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Danh sách card
-            Expanded(
-              child: cards.isEmpty
-                  ? const Center(child: Text('No cards added today'))
-                  : ListView.builder(
-                itemCount: cards.length,
-                itemBuilder: (context, index) => _buildCardItem(cards[index]),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
   Widget _buildDeckList() {
+    if (_currentTabIndex != 0) {
+      return Container(); // Không load stream nếu không ở tab Deck's Cards
+    }
+
     return StreamBuilder<List<Deck>>(
       stream: _deckService.getDecks(),
       builder: (context, snapshot) {
@@ -317,7 +332,9 @@ class _ManageCardsScreenState extends State<ManageCardsScreen> {
           return Center(child: Text('Error: ${snapshot.error}'));
         }
 
+        // Get decks and sort them by name
         final decks = snapshot.data ?? [];
+        decks.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
         return StreamBuilder<Map<String, DueCardInfo>>(
           stream: _videoCardService.getDueCardsInfoForDecks(),
@@ -325,6 +342,7 @@ class _ManageCardsScreenState extends State<ManageCardsScreen> {
             if (dueCardsSnapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             }
+            _checkAndCleanupDeletedItems();
             final dueCardsInfo = dueCardsSnapshot.data ?? {};
 
             return Column(
@@ -416,6 +434,12 @@ class _ManageCardsScreenState extends State<ManageCardsScreen> {
           _buildCountText(dueInfo.mediumTermCount, Colors.blue),
         if (dueInfo.longTermCount > 0)
           _buildCountText(dueInfo.longTermCount, Colors.green),
+        if (dueInfo.extralongTermCount > 0)
+          _buildCountText(dueInfo.extralongTermCount, Color(0xFFFFD700)),
+        if (dueInfo.ultralongTermCount > 0)
+          _buildCountText(dueInfo.ultralongTermCount, Colors.purple),
+        if (dueInfo.infinitelylongTermCount > 0)
+          _buildCountText(dueInfo.infinitelylongTermCount, Color(0xFFE5E4E2)), // Kim loại bạch kim
       ],
     );
   }
@@ -471,12 +495,7 @@ class _ManageCardsScreenState extends State<ManageCardsScreen> {
       },
     );
   }
-  void _navigateToVideoStudyScreen(Deck deck) async {
-    // Tính toán overdue trước khi navigate
-    final videoCardService = VideoCardService();
-    await videoCardService.updateOverdueForDeck(deck.id);
-
-    // Navigate đến VideoStudyScreen
+  void _navigateToVideoStudyScreen(Deck deck) {
     if (!context.mounted) return;
     Navigator.push(
       context,
@@ -487,7 +506,15 @@ class _ManageCardsScreenState extends State<ManageCardsScreen> {
           isSpeedDeck: deck.isSpeedDeck,
         ),
       ),
-    );
+    ).then((_) {
+      // Khi user quay lại, clear cache để buộc getDueCardsInfoForDecks() fetch dữ liệu mới
+      _videoCardService.clearCache();
+
+      // Trigger rebuild để cập nhật UI
+
+        setState(() {});
+
+    });
   }
   void _showEditDeckDialog(BuildContext context, Deck deck) {
     final TextEditingController controller = TextEditingController(text: deck.name);
@@ -588,7 +615,7 @@ class _ManageCardsScreenState extends State<ManageCardsScreen> {
             child: const Text('Delete'),
             onPressed: () async {
               try {
-                await _deckService.deleteDeck(deck.id);
+                await _deckService.deleteDeckTemp(deck.id);
                 Navigator.pop(context);
                 _showSuccessSnackBar('Deck deleted successfully');
               } catch (e) {
@@ -600,21 +627,86 @@ class _ManageCardsScreenState extends State<ManageCardsScreen> {
       ),
     );
   }
-  void _showDeckCards(BuildContext context, Deck deck)async  {
-    final videoCardService = VideoCardService();
-    await videoCardService.updateOverdueForDeck(deck.id);
+  void _showDeckCards(BuildContext context, Deck deck) {
+    final ScrollController scrollController = ScrollController();
+    List<VideoCard>? currentCards;
+
+    // Thêm hàm sắp xếp
+    void sortCards(List<VideoCard> cards, String field, bool ascending) {
+      cards.sort((a, b) {
+        dynamic valueA;
+        dynamic valueB;
+
+        switch (field) {
+          case 'videoId':
+            valueA = a.videoId;
+            valueB = b.videoId;
+            break;
+          case 'videoTitle':
+            valueA = a.videoTitle;
+            valueB = b.videoTitle;
+            break;
+          case 'answer':
+            valueA = a.answer;
+            valueB = b.answer;
+            break;
+          case 'createdAt':
+            valueA = a.createdAt;
+            valueB = b.createdAt;
+            break;
+          case 'reviewDates':
+            valueA = a.reviewDates.isEmpty ? DateTime(1900) : a.reviewDates.last;
+            valueB = b.reviewDates.isEmpty ? DateTime(1900) : b.reviewDates.last;
+            break;
+          case 'interval':
+            valueA = a.interval;
+            valueB = b.interval;
+            break;
+          case 'dueDate':
+            valueA = a.dueDate;
+            valueB = b.dueDate;
+            break;
+          case 'videoSpeed':
+            valueA = a.videoSpeed;
+            valueB = b.videoSpeed;
+            break;
+          case 'maxVideoSpeed':
+            valueA = a.maxVideoSpeed;
+            valueB = b.maxVideoSpeed;
+            break;
+          default:
+            valueA = a.videoTitle;
+            valueB = b.videoTitle;
+        }
+
+        int comparison = ascending ? 1 : -1;
+        if (valueA == null) return -1 * comparison;
+        if (valueB == null) return 1 * comparison;
+
+        if (valueA is String && valueB is String) {
+          return ascending ?
+            valueA.toLowerCase().compareTo(valueB.toLowerCase()) :
+            valueB.toLowerCase().compareTo(valueA.toLowerCase());
+        }
+
+        return ascending ?
+          valueA.compareTo(valueB) :
+          valueB.compareTo(valueA);
+      });
+    }
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       builder: (BuildContext context) {
         return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setState) {
+          builder: (BuildContext context, StateSetter setModalState) {
             return DraggableScrollableSheet(
               initialChildSize: 0.9,
               minChildSize: 0.5,
               maxChildSize: 0.9,
               expand: false,
-              builder: (_, controller) {
+              builder: (_, sheetController) {
                 return Column(
                   children: [
                     AppBar(
@@ -636,14 +728,17 @@ class _ManageCardsScreenState extends State<ManageCardsScreen> {
                               value: _sortField,
                               onChanged: (String? newValue) {
                                 if (newValue != null) {
-                                  setState(() {
+                                  setModalState(() {
                                     _sortField = newValue;
+                                    if (currentCards != null) {
+                                      sortCards(currentCards!, _sortField, _sortAscending);
+                                    }
                                   });
                                 }
                               },
                               items: <String>[
                                 'videoId', 'videoTitle', 'answer', 'createdAt',
-                                'reviewDates', 'interval', 'dueDate','overdue','videoSpeed', 'maxVideoSpeed'
+                                'reviewDates', 'interval', 'dueDate', 'videoSpeed', 'maxVideoSpeed'
                               ].map<DropdownMenuItem<String>>((String value) {
                                 return DropdownMenuItem<String>(
                                   value: value,
@@ -657,8 +752,11 @@ class _ManageCardsScreenState extends State<ManageCardsScreen> {
                             value: _sortAscending,
                             onChanged: (bool? newValue) {
                               if (newValue != null) {
-                                setState(() {
+                                setModalState(() {
                                   _sortAscending = newValue;
+                                  if (currentCards != null) {
+                                    sortCards(currentCards!, _sortField, _sortAscending);
+                                  }
                                 });
                               }
                             },
@@ -673,64 +771,58 @@ class _ManageCardsScreenState extends State<ManageCardsScreen> {
                       ),
                     ),
                     Expanded(
-                      child: StreamBuilder<List<VideoCard>>(
-                        stream: _videoCardService.getVideoCardsInDeck(deck.id),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState == ConnectionState.waiting) {
-                            return const Center(child: CircularProgressIndicator());
-                          }
-
-                          if (snapshot.hasError) {
-                            return Center(child: Text('Error: ${snapshot.error}'));
-                          }
-
-                          var cards = snapshot.data ?? [];
-                          if (cards.isEmpty) {
-                            return const Center(child: Text('No cards in this deck'));
-                          }
-
-                          // Sort the cards based on the selected field and order
-                          cards.sort((a, b) {
-                            if (_sortField == 'reviewDates') {
-                              // Xử lý đặc biệt cho reviewDates
-                              DateTime? lastReviewA = a.reviewDates.isNotEmpty ? a.reviewDates.last : null;
-                              DateTime? lastReviewB = b.reviewDates.isNotEmpty ? b.reviewDates.last : null;
-
-                              // Nếu cả hai đều null
-                              if (lastReviewA == null && lastReviewB == null) return 0;
-                              // Nếu A null, B không null
-                              if (lastReviewA == null) return _sortAscending ? 1 : -1;
-                              // Nếu B null, A không null
-                              if (lastReviewB == null) return _sortAscending ? -1 : 1;
-                              // Cả hai đều có giá trị
-                              return _sortAscending
-                                  ? lastReviewA.compareTo(lastReviewB)
-                                  : lastReviewB.compareTo(lastReviewA);
-                            } else {
-                              // Các trường khác giữ nguyên logic cũ
-                              var aValue = a.toJson()[_sortField];
-                              var bValue = b.toJson()[_sortField];
-
-                              if (aValue == null && bValue == null) return 0;
-                              if (aValue == null) return _sortAscending ? 1 : -1;
-                              if (bValue == null) return _sortAscending ? -1 : 1;
-
-                              if (aValue is String && bValue is String) {
-                                return _sortAscending ? aValue.compareTo(bValue) : bValue.compareTo(aValue);
-                              } else if (aValue is num && bValue is num) {
-                                return _sortAscending ? aValue.compareTo(bValue) : bValue.compareTo(aValue);
-                              } else if (aValue is DateTime && bValue is DateTime) {
-                                return _sortAscending ? aValue.compareTo(bValue) : bValue.compareTo(aValue);
-                              } else {
-                                return 0;
+                      child: StreamBuilder<String>(
+                        stream: _cardUpdateController.stream,
+                        builder: (context, _) {
+                          return StreamBuilder<List<VideoCard>>(
+                            stream: _videoCardService.getVideoCardsInDeck(deck.id),
+                            builder: (context, snapshot) {
+                              if (snapshot.connectionState == ConnectionState.waiting && currentCards == null) {
+                                return const Center(child: CircularProgressIndicator());
                               }
-                            }
-                          });
 
-                          return ListView.builder(
-                            controller: controller,
-                            itemCount: cards.length,
-                            itemBuilder: (context, index) => _buildCardItem(cards[index]),
+                              if (snapshot.hasError) {
+                                return Center(child: Text('Error: ${snapshot.error}'));
+                              }
+
+                              // Cập nhật currentCards khi có dữ liệu mới từ stream
+                              currentCards = snapshot.data ?? currentCards ?? [];
+
+                              if (currentCards!.isEmpty) {
+                                return const Center(child: Text('No cards in this deck'));
+                              }
+
+                              if (currentCards!.isNotEmpty) {
+                                sortCards(currentCards!, _sortField, _sortAscending);
+                              }
+
+                              return ListView.builder(
+                                controller: scrollController,
+                                itemCount: currentCards!.length,
+                                itemBuilder: (context, index) => _buildCardItem(
+                                  currentCards![index],
+                                  onEdit: () async {
+                                    final edited = await _showEditDialog(context, currentCards![index]);
+                                    if (edited == true) {
+                                      // Thông báo ID của card đã được cập nhật
+                                      _cardUpdateController.add(currentCards![index].id!);
+                                    }
+                                  },
+                                  onDelete: () async {
+                                    try {
+                                      await _videoCardService.deleteVideoCardTemp(currentCards![index].id!);
+
+                                        setModalState(() {});
+                                        setState(() {});
+
+                                      _showNotification('Card temporarily deleted successfully');
+                                    } catch (e) {
+                                      _showNotification('Error deleting card: ${e.toString()}');
+                                    }
+                                  },
+                                ),
+                              );
+                            },
                           );
                         },
                       ),
@@ -742,19 +834,17 @@ class _ManageCardsScreenState extends State<ManageCardsScreen> {
           },
         );
       },
-    );
+    ).then((_) {
+      scrollController.dispose();
+    });
   }
 
-  Widget _buildCardItem(VideoCard card) {
-    // Khởi tạo các biến secondField và secondFieldValue
-
+  Widget _buildCardItem(VideoCard card, {VoidCallback? onEdit, VoidCallback? onDelete}) {
     String secondFieldValue = 'Speed: ${card.videoSpeed.toStringAsFixed(2)}x';
 
-    // Gán giá trị dựa trên _sortField (nếu bạn cần dựa vào sort)
     switch (_sortField) {
       case 'videoTitle':
       case 'answer':
-
         secondFieldValue = 'videoSpeed: ${card.videoSpeed.toStringAsFixed(2)}x';
         break;
       case 'videoId':
@@ -770,9 +860,6 @@ class _ManageCardsScreenState extends State<ManageCardsScreen> {
         break;
       case 'interval':
         secondFieldValue = 'interval: ${card.interval} days';
-        break;
-      case 'overdue':
-        secondFieldValue = 'overdue: ${card.overdue} days';
         break;
       case 'dueDate':
         secondFieldValue = 'dueDate: ${DateFormat('yyyy-MM-dd HH:mm').format(card.dueDate)}';
@@ -805,8 +892,9 @@ class _ManageCardsScreenState extends State<ManageCardsScreen> {
               overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 4),
-            // Limit height for preview
+            // Tạo mới QuillAnswerView mỗi khi card thay đổi
             QuillAnswerView(
+              key: ValueKey(card.id! + card.answer), // Thêm key để force rebuild
               answer: card.answer,
               maxHeight: 50,
             ),
@@ -817,13 +905,23 @@ class _ManageCardsScreenState extends State<ManageCardsScreen> {
           children: [
             IconButton(
               icon: const Icon(Icons.edit),
-              onPressed: () => _showEditDialog(context, card),
+              onPressed: onEdit ?? () => _showEditDialog(context, card),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
             ),
             IconButton(
               icon: const Icon(Icons.delete),
-              onPressed: () => _showDeleteConfirmation(context, card),
+              onPressed: onDelete ?? () async {
+                try {
+                  await _videoCardService.deleteVideoCardTemp(card.id!);
+                  if (mounted) {
+                    setState(() {});
+                  }
+                  _showNotification('Card temporarily deleted successfully');
+                } catch (e) {
+                  _showNotification('Error deleting card: ${e.toString()}');
+                }
+              },
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
             ),
@@ -843,8 +941,9 @@ class _ManageCardsScreenState extends State<ManageCardsScreen> {
                 Text('Video Speed: ${card.videoSpeed.toStringAsFixed(2)}x'),
                 Text('Max Video Speed: ${card.maxVideoSpeed.toStringAsFixed(2)}x'),
                 const Text('Answer:'),
-                // Full height for expanded view
+                // Tạo mới QuillAnswerView cho phần mở rộng
                 QuillAnswerView(
+                  key: ValueKey('expanded-${card.id!}-${card.answer}'), // Thêm key riêng cho phần mở rộng
                   answer: card.answer,
                 ),
                 if (card.deckName != null)
@@ -856,62 +955,10 @@ class _ManageCardsScreenState extends State<ManageCardsScreen> {
       ),
     );
   }
-  Widget _buildCardList(Stream<List<VideoCard>> cardStream, String emptyMessage) {
-    return StreamBuilder<List<VideoCard>>(
-      stream: cardStream,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
 
-        if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        }
 
-        final cards = snapshot.data ?? [];
-        if (cards.isEmpty) {
-          return Center(child: Text(emptyMessage));
-        }
-
-        return ListView.builder(
-          itemCount: cards.length,
-          itemBuilder: (context, index) {
-            final card = cards[index];
-            return Card(
-              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: ListTile(
-                title: Text('Video Title: ${card.videoTitle}'),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Speed: ${card.videoSpeed}'),
-                    Text('Answer: ${card.answer}'),
-                    if (card.deckName != null) Text('Deck: ${card.deckName}'),
-                  ],
-                ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.edit),
-                      onPressed: () => _showEditDialog(context, card),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete),
-                      onPressed: () => _showDeleteConfirmation(context, card),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void _showEditDialog(BuildContext context, VideoCard card) {
-    showDialog(
+  Future<bool?> _showEditDialog(BuildContext context, VideoCard card) async {
+    final result = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) {
         return EditCardDialog(
@@ -919,24 +966,27 @@ class _ManageCardsScreenState extends State<ManageCardsScreen> {
           onSave: (editedCard) async {
             try {
               await _videoCardService.updateVideoCard(editedCard);
-              if (!context.mounted) return;
-              Navigator.of(context).pop(true);
+              if (mounted) {
+                setState(() {});
+              }
+              _showNotification('Card updated successfully.');
+              // Sử dụng card ID làm key cho StreamController
+              if (editedCard.id != null) {
+                _cardUpdateController.add(editedCard.id!);
+              }
             } catch (e) {
-              if (!context.mounted) return;
-              Navigator.of(context).pop(false);
               _showNotification('Error updating card: ${e.toString()}');
             }
           },
         );
       },
-    ).then((success) {
-      if (success == true) {
-        _showNotification('Card updated successfully.');
-      }
-    });
+    );
+
+    // Trả về true nếu dialog trả về true, ngược lại trả về false
+
+    return result;
+
   }
-
-
 
   void _showNotification(String message) {
     _removeOverlay();
@@ -1017,6 +1067,356 @@ class _ManageCardsScreenState extends State<ManageCardsScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildDeletedCardsList() {
+    if (_currentTabIndex != 2) {
+      return Container();
+    }
+
+    return Column(
+      children: [
+        Expanded(
+          child: DefaultTabController(
+            length: 2,
+            child: Column(
+              children: [
+                TabBar(
+                  tabs: const [
+                    Tab(text: 'Deleted Cards'),
+                    Tab(text: 'Deleted Decks'),
+                  ],
+                ),
+                Expanded(
+                  child: TabBarView(
+                    children: [
+                      _buildDeletedCardsTab(),
+                      _buildDeletedDecksTab(),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _checkAndCleanupDeletedItems() async {
+    // Lấy danh sách các thẻ đã xóa và xóa vĩnh viễn nếu quá hạn
+    final deletedCards = await _videoCardService.getDeletedCards().first;
+    if (deletedCards.isNotEmpty) {
+      await _checkAndPermanentlyDeleteCards(deletedCards);
+    }
+    
+    // Lấy danh sách các bộ thẻ đã xóa và xóa vĩnh viễn nếu quá hạn
+    final deletedDecks = await _deckService.getDeletedDecks().first;
+    if (deletedDecks.isNotEmpty) {
+      await _checkAndPermanentlyDeleteDecks(deletedDecks);
+    }
+  }
+
+  Widget _buildDeletedCardsTab() {
+    List<VideoCard>? currentCards;
+
+    return StatefulBuilder(
+      builder: (context, setState) {
+        return StreamBuilder<List<VideoCard>>(
+          stream: _videoCardService.getDeletedCards(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting && currentCards == null) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (snapshot.hasError) {
+              return Center(child: Text('Error: ${snapshot.error}'));
+            }
+
+            currentCards = snapshot.data ?? currentCards ?? [];
+            
+            // Đã xử lý trong initState nên không cần gọi lại ở đây
+            // _checkAndPermanentlyDeleteCards(currentCards!);
+
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            'Total deleted cards: ${currentCards!.length}',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Cards will be automatically deleted permanently after 30 days',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontStyle: FontStyle.italic,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: currentCards!.isEmpty
+                      ? const Center(child: Text('No deleted cards'))
+                      : ListView.builder(
+                          itemCount: currentCards!.length,
+                          itemBuilder: (context, index) => _buildDeletedCardItem(
+                            currentCards![index],
+                            onRestore: () {
+                              _restoreCard(currentCards![index]).then((_) {
+                                setState(() {}); // Trigger rebuild khi khôi phục xong
+                              });
+                            },
+                          ),
+                        ),
+                ),
+              ],
+            );
+          },
+        );
+      }
+    );
+  }
+
+  Widget _buildDeletedDecksTab() {
+    List<Deck>? currentDecks;
+
+    return StatefulBuilder(
+      builder: (context, setState) {
+        return StreamBuilder<List<Deck>>(
+          stream: _deckService.getDeletedDecks(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting && currentDecks == null) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (snapshot.hasError) {
+              return Center(child: Text('Error: ${snapshot.error}'));
+            }
+
+            currentDecks = snapshot.data ?? currentDecks ?? [];
+            
+            // Đã xử lý trong initState nên không cần gọi lại ở đây
+            // _checkAndPermanentlyDeleteDecks(currentDecks!);
+
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            'Total deleted decks: ${currentDecks!.length}',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Decks and their cards will be automatically deleted permanently after 30 days',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontStyle: FontStyle.italic,
+                          color: Colors.grey,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: currentDecks!.isEmpty
+                      ? const Center(child: Text('No deleted decks'))
+                      : ListView.builder(
+                          itemCount: currentDecks!.length,
+                          itemBuilder: (context, index) {
+                            final deck = currentDecks![index];
+                            return ListTile(
+                              title: Text(deck.name),
+                              subtitle: Text('Deleted at: ${DateFormat('yyyy-MM-dd HH:mm').format(deck.deletedAt!)}'),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.restore, color: Colors.green),
+                                onPressed: () => _restoreDeck(deck),
+                                tooltip: 'Restore deck',
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            );
+          },
+        );
+      }
+    );
+  }
+
+  Widget _buildDeletedCardItem(VideoCard card, {VoidCallback? onRestore, VoidCallback? onDelete}) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: ExpansionTile(
+        title: Text(
+          'Video Title: ${card.videoTitle}',
+          style: Theme.of(context).textTheme.titleMedium,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Deleted at: ${DateFormat('yyyy-MM-dd HH:mm').format(card.deletedAt!)}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 4),
+            QuillAnswerView(
+              key: ValueKey(card.id! + card.answer),
+              answer: card.answer,
+              maxHeight: 50,
+            ),
+          ],
+        ),
+        trailing: IconButton(
+          icon: const Icon(Icons.restore, color: Colors.green),
+          onPressed: onRestore,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(),
+          tooltip: 'Restore card',
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Video ID: ${card.videoId}'),
+                Text('Created At: ${DateFormat('yyyy-MM-dd HH:mm').format(card.createdAt)}'),
+                Text('Last Review: ${card.reviewDates.isNotEmpty ? DateFormat('yyyy-MM-dd HH:mm').format(card.reviewDates.last) : 'Not reviewed'}'),
+                Text('Interval: ${card.interval} days'),
+                Text('Due Date: ${DateFormat('yyyy-MM-dd HH:mm').format(card.dueDate)}'),
+                Text('Video Speed: ${card.videoSpeed.toStringAsFixed(2)}x'),
+                Text('Max Video Speed: ${card.maxVideoSpeed.toStringAsFixed(2)}x'),
+                const Text('Answer:'),
+                QuillAnswerView(
+                  key: ValueKey('expanded-deleted-${card.id!}-${card.answer}'),
+                  answer: card.answer,
+                ),
+                if (card.deckName != null)
+                  Text('Deck: ${card.deckName}'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _restoreCard(VideoCard card) async {
+    try {
+      await _videoCardService.restoreCard(card.id!);
+      
+      // Clear cache sau khi restore để refresh dữ liệu
+      _videoCardService.clearCache();
+
+
+      if (mounted) {
+        _showSuccessSnackBar('Card restored successfully');
+      }
+    } catch (e) {
+      if (mounted) {
+        _showErrorSnackBar('Failed to restore card: $e');
+      }
+    }
+  }
+
+  Future<void> _restoreDeck(Deck deck) async {
+    try {
+      await _deckService.restoreDeck(deck.id);
+
+      if (mounted) {
+        _showSuccessSnackBar('Deck restored successfully');
+      }
+    } catch (e) {
+      if (mounted) {
+        _showErrorSnackBar('Failed to restore deck: $e');
+      }
+    }
+  }
+
+  Future<void> _checkAndPermanentlyDeleteCards(List<VideoCard> cards) async {
+    final now = DateTime.now();
+    final cardsToDelete = <VideoCard>[];
+
+    // Tìm các thẻ đã xóa tạm thời quá 30 ngày
+    for (var card in cards) {
+      if (card.deletedAt != null) {
+        final timeDifference = now.difference(card.deletedAt!);
+        if (timeDifference.inDays >= 30) {
+          cardsToDelete.add(card);
+        }
+      }
+    }
+
+    // Xóa vĩnh viễn các thẻ đã tìm thấy
+    for (var card in cardsToDelete) {
+      try {
+        await _videoCardService.deleteVideoCard(card.id!);
+        print('Permanently deleted card: ${card.id}');
+      } catch (e) {
+        print('Error permanently deleting card ${card.id}: $e');
+      }
+    }
+
+    // Hiển thị thông báo nếu có thẻ bị xóa vĩnh viễn
+
+  }
+
+  Future<void> _checkAndPermanentlyDeleteDecks(List<Deck> decks) async {
+    final now = DateTime.now();
+    final decksToDelete = <Deck>[];
+
+    // Tìm các deck đã xóa tạm thời quá 30 ngày
+    for (var deck in decks) {
+      if (deck.deletedAt != null) {
+        final timeDifference = now.difference(deck.deletedAt!);
+        if (timeDifference.inDays >= 30) {
+          decksToDelete.add(deck);
+        }
+      }
+    }
+
+    // Xóa vĩnh viễn các deck đã tìm thấy
+    for (var deck in decksToDelete) {
+      try {
+        await _deckService.deleteDeck(deck.id);
+        print('Permanently deleted deck: ${deck.id}');
+      } catch (e) {
+        print('Error permanently deleting deck ${deck.id}: $e');
+      }
+    }
+
+    // Hiển thị thông báo nếu có deck bị xóa vĩnh viễn
+
   }
 }
 class QuillAnswerView extends StatefulWidget {

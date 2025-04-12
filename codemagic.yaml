@@ -1,0 +1,25 @@
+workflows:
+  flutter-ios-workflow:
+    name: Flutter iOS Build
+    max_build_duration: 120
+    environment:
+      flutter: stable # Hoặc phiên bản Flutter cụ thể, ví dụ: 3.10.0
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Install Flutter dependencies
+        script: |
+          flutter pub get
+      - name: Build iOS IPA
+        script: |
+          flutter build ios --release --no-codesign
+          cd build/ios/iphoneos
+          mkdir Payload
+          mv Runner.app Payload/
+          zip -r app.ipa Payload
+    artifacts:
+      - build/ios/iphoneos/*.ipa
+    publishing:
+      email:
+        recipients:
+          - spavica.com@gmail.com # Thay bằng email của bạn

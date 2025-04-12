@@ -7,15 +7,22 @@ class Deck {
   final String id;
   final String name;
   final bool isSpeedDeck;
+  final DateTime? deletedAt;
 
-  Deck({required this.id, required this.name,this.isSpeedDeck = false});
+  Deck({
+    required this.id, 
+    required this.name,
+    this.isSpeedDeck = false,
+    this.deletedAt,
+  });
 
   factory Deck.fromFirestore(DocumentSnapshot doc) {
     Map data = doc.data() as Map<String, dynamic>;
     return Deck(
       id: doc.id,
       name: data['name'] ?? '',
-      isSpeedDeck: data['isSpeedDeck'] ?? false,  // Đọc giá trị từ Firestore
+      isSpeedDeck: data['isSpeedDeck'] ?? false,
+      deletedAt: data['deletedAt'] != null ? (data['deletedAt'] as Timestamp).toDate() : null,
     );
   }
 
@@ -23,7 +30,22 @@ class Deck {
     return {
       'name': name,
       'isSpeedDeck': isSpeedDeck,
+      'deletedAt': deletedAt != null ? Timestamp.fromDate(deletedAt!) : null,
     };
+  }
+  
+  Deck copyWith({
+    String? id,
+    String? name,
+    bool? isSpeedDeck,
+    DateTime? deletedAt,
+  }) {
+    return Deck(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      isSpeedDeck: isSpeedDeck ?? this.isSpeedDeck,
+      deletedAt: deletedAt ?? this.deletedAt,
+    );
   }
 }
 
@@ -48,7 +70,8 @@ class DeckService {
           .collection('decks')
           .add({
         'name': name,
-        'isSpeedDeck': isSpeedDeck,  // Thêm trường mới
+        'isSpeedDeck': isSpeedDeck,
+        'deletedAt': null,
       });
       print('Deck created successfully');
     } catch (e) {
@@ -86,6 +109,62 @@ class DeckService {
     }
   }
 
+  Future<void> deleteDeckTemp(String deckId) async {
+    if (_auth.currentUser == null) {
+      throw Exception('User must be logged in to temporarily delete a deck');
+    }
+
+    try {
+      String? userEmail = _auth.currentUser!.email;
+      if (userEmail == null) {
+        throw Exception('User email not found');
+      }
+
+      final now = Timestamp.now();
+      
+      await _firestore
+          .collection('users')
+          .doc(userEmail)
+          .collection('decks')
+          .doc(deckId)
+          .update({
+        'deletedAt': now,
+      });
+
+      print('Deck temporarily deleted successfully');
+    } catch (e) {
+      print('Error temporarily deleting deck: $e');
+      throw Exception('Failed to temporarily delete deck');
+    }
+  }
+
+  Future<void> restoreDeck(String deckId) async {
+    if (_auth.currentUser == null) {
+      throw Exception('User must be logged in to restore a deck');
+    }
+
+    try {
+      String? userEmail = _auth.currentUser!.email;
+      if (userEmail == null) {
+        throw Exception('User email not found');
+      }
+      
+      await _firestore
+          .collection('users')
+          .doc(userEmail)
+          .collection('decks')
+          .doc(deckId)
+          .update({
+        'deletedAt': null,
+      });
+
+      print('Deck restored successfully');
+    } catch (e) {
+      print('Error restoring deck: $e');
+      throw Exception('Failed to restore deck');
+    }
+  }
+
   Future<void> deleteDeck(String deckId) async {
     if (_auth.currentUser == null) {
       throw Exception('User must be logged in to delete a deck');
@@ -97,9 +176,7 @@ class DeckService {
         throw Exception('User email not found');
       }
 
-      // Bắt đầu một transaction để đảm bảo tính toàn vẹn của dữ liệu
       await _firestore.runTransaction((transaction) async {
-        // 1. Lấy tất cả các card trong deck
         final cardsQuery = await _firestore
             .collection('users')
             .doc(userEmail)
@@ -107,12 +184,10 @@ class DeckService {
             .where('deckId', isEqualTo: deckId)
             .get();
 
-        // 2. Xóa tất cả các card
         for (var cardDoc in cardsQuery.docs) {
           transaction.delete(cardDoc.reference);
         }
 
-        // 3. Xóa deck
         final deckRef = _firestore
             .collection('users')
             .doc(userEmail)
@@ -152,9 +227,35 @@ class DeckService {
         .collection('decks')
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs.map((doc) => Deck.fromFirestore(doc)).toList();
+      return snapshot.docs
+        .map((doc) => Deck.fromFirestore(doc))
+        .where((deck) => deck.deletedAt == null)
+        .toList();
     });
   }
+  
+  Stream<List<Deck>> getDeletedDecks() {
+    if (_auth.currentUser == null || _auth.currentUser!.email == null) {
+      return Stream.value([]);
+    }
+
+    return _firestore
+        .collection('users')
+        .doc(_auth.currentUser!.email)
+        .collection('decks')
+        .snapshots()
+        .map((snapshot) {
+      final deletedDecks = snapshot.docs
+        .map((doc) => Deck.fromFirestore(doc))
+        .where((deck) => deck.deletedAt != null)
+        .toList();
+      
+      deletedDecks.sort((a, b) => b.deletedAt!.compareTo(a.deletedAt!));
+      
+      return deletedDecks;
+    });
+  }
+  
   Future<List<VideoCard>> getCardsForDeck(String deckId) async {
     if (_auth.currentUser == null || _auth.currentUser!.email == null) {
       throw Exception('User must be logged in to get deck cards');
@@ -189,6 +290,41 @@ class DeckService {
     } catch (e) {
       print('Error getting cards for deck: $e');
       rethrow;
+    }
+  }
+
+  Future<void> createDefaultDeckIfNeeded() async {
+    if (_auth.currentUser == null) {
+      throw Exception('User must be logged in');
+    }
+
+    try {
+      String? userEmail = _auth.currentUser!.email;
+      if (userEmail == null) {
+        throw Exception('User email not found');
+      }
+
+      final decksSnapshot = await _firestore
+          .collection('users')
+          .doc(userEmail)
+          .collection('decks')
+          .limit(1)
+          .get();
+
+      if (decksSnapshot.docs.isEmpty) {
+        await _firestore
+            .collection('users')
+            .doc(userEmail)
+            .collection('decks')
+            .add({
+          'name': 'Default Deck',
+          'isSpeedDeck': false,
+          'deletedAt': null,
+        });
+      }
+    } catch (e) {
+      print('Error creating default deck: $e');
+      throw Exception('Failed to create default deck');
     }
   }
 }

@@ -33,6 +33,14 @@ class _EditCardDialogState extends State<EditCardDialog> {
   final List<double> _maxVideoSpeedOptions = [1.25, 1.50, 1.75, 2.0];
   final List<double> _videoSpeedOptions = [0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.35, 1.4, 1.45, 1.5, 1.55, 1.6, 1.65, 1.7, 1.75, 1.8, 1.85, 1.9, 1.95, 2.0];
   QuillController _quillController = QuillController.basic();
+  final ValueNotifier<Color?> _currentTextColorNotifier = ValueNotifier<Color?>(null);
+  final ValueNotifier<bool> _isBoldNotifier = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> _isItalicNotifier = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> _isUnderlineNotifier = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> _isH1Notifier = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> _isH2Notifier = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> _isH3Notifier = ValueNotifier<bool>(false);
+  late FocusNode _quillFocusNode;
 
 
   @override
@@ -46,6 +54,7 @@ class _EditCardDialogState extends State<EditCardDialog> {
     _endTimeController = TextEditingController(text: _editedCard.endTime.toString());
     _selectedVideoSpeed = _editedCard.videoSpeed;
     _selectedMaxVideoSpeed = _editedCard.maxVideoSpeed;
+    _quillFocusNode = FocusNode();
     var doc = Document();
     if (_editedCard.answer.isNotEmpty) {
       try {
@@ -59,8 +68,21 @@ class _EditCardDialogState extends State<EditCardDialog> {
       document: doc,
       selection: const TextSelection.collapsed(offset: 0),
     );
+    _quillController.addListener(_updateTextAttributes);
   }
 
+  void _updateTextAttributes() {
+    final currentAttributes = _quillController.getSelectionStyle().attributes;
+    _currentTextColorNotifier.value = currentAttributes.containsKey('color')
+        ? Color(int.parse(currentAttributes['color']!.value.substring(1), radix: 16) + 0xFF000000)
+        : null;
+    _isBoldNotifier.value = currentAttributes.containsKey('bold');
+    _isItalicNotifier.value = currentAttributes.containsKey('italic');
+    _isUnderlineNotifier.value = currentAttributes.containsKey('underline');
+    _isH1Notifier.value = currentAttributes.containsKey('header') && currentAttributes['header']!.value == 1;
+    _isH2Notifier.value = currentAttributes.containsKey('header') && currentAttributes['header']!.value == 2;
+    _isH3Notifier.value = currentAttributes.containsKey('header') && currentAttributes['header']!.value == 3;
+  }
 
   @override
   void dispose() {
@@ -69,6 +91,15 @@ class _EditCardDialogState extends State<EditCardDialog> {
     _videoTitleController.dispose();
     _startTimeController.dispose();
     _endTimeController.dispose();
+    _quillController.removeListener(_updateTextAttributes);
+    _currentTextColorNotifier.dispose();
+    _isBoldNotifier.dispose();
+    _isItalicNotifier.dispose();
+    _isUnderlineNotifier.dispose();
+    _isH1Notifier.dispose();
+    _isH2Notifier.dispose();
+    _isH3Notifier.dispose();
+    _quillFocusNode.dispose();
     super.dispose();
   }
   Widget _buildQuillEditor() {
@@ -82,123 +113,214 @@ class _EditCardDialogState extends State<EditCardDialog> {
           QuillToolbar(
             child: Row(
               children: [
-                IconButton(
-                  icon: const Icon(Icons.format_bold),
-                  onPressed: () {
-                    _quillController.formatSelection(Attribute.bold);
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.format_italic),
-                  onPressed: () {
-                    _quillController.formatSelection(Attribute.italic);
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.format_underline),
-                  onPressed: () {
-                    _quillController.formatSelection(Attribute.underline);
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.format_color_fill),
-                  onPressed: () async {
-                    final List<Color> colors = [
-                      Colors.black,
-                      Colors.white,
-                      Colors.grey,
-                      Colors.brown,
-                      Colors.red,
-                      Colors.redAccent,
-                      Colors.pink,
-                      Colors.pinkAccent,
-                      Colors.purple,
-                      Colors.purpleAccent,
-                      Colors.deepPurple,
-                      Colors.deepPurpleAccent,
-                      Colors.indigo,
-                      Colors.indigoAccent,
-                      Colors.blue,
-                      Colors.blueAccent,
-                      Colors.lightBlue,
-                      Colors.lightBlueAccent,
-                      Colors.cyan,
-                      Colors.cyanAccent,
-                      Colors.teal,
-                      Colors.tealAccent,
-                      Colors.green,
-                      Colors.greenAccent,
-                      Colors.lightGreen,
-                      Colors.lightGreenAccent,
-                      Colors.lime,
-                      Colors.limeAccent,
-                      Colors.yellow,
-                      Colors.yellowAccent,
-                      Colors.amber,
-                      Colors.amberAccent,
-                      Colors.orange,
-                      Colors.orangeAccent,
-                      Colors.deepOrange,
-                      Colors.deepOrangeAccent,
-                    ];
-
-                    Color? selectedColor = await showDialog(
-                      context: context,
-                      builder: (BuildContext context) {
-                        return AlertDialog(
-                          title: const Text('Chọn màu'),
-                          content: Container(
-                            width: 350,
-                            child: Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: colors.map((color) {
-                                return InkWell(
-                                  onTap: () {
-                                    Navigator.of(context).pop(color);
-                                  },
-                                  child: Container(
-                                    width: 45,
-                                    height: 45,
-                                    decoration: BoxDecoration(
-                                      color: color,
-                                      border: Border.all(color: Colors.grey.shade300),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          ),
-                          actions: <Widget>[
-                            TextButton(
-                              child: const Text('Hủy'),
-                              onPressed: () {
-                                Navigator.of(context).pop();
-                              },
-                            ),
-                          ],
+                ValueListenableBuilder<bool>(
+                  valueListenable: _isBoldNotifier,
+                  builder: (context, isBold, child) {
+                    return IconButton(
+                      icon: Icon(
+                        Icons.format_bold,
+                        color: isBold ? Colors.blue : Colors.grey,
+                      ),
+                      onPressed: () {
+                        _quillController.formatSelection(
+                            isBold ? Attribute.clone(Attribute.bold, null) : Attribute.bold
                         );
                       },
                     );
+                  },
+                ),
+                ValueListenableBuilder<bool>(
+                  valueListenable: _isItalicNotifier,
+                  builder: (context, isItalic, child) {
+                    return IconButton(
+                      icon: Icon(
+                        Icons.format_italic,
+                        color: isItalic ? Colors.green : Colors.grey,
+                      ),
+                      onPressed: () {
+                        _quillController.formatSelection(
+                            isItalic ? Attribute.clone(Attribute.italic, null) : Attribute.italic
+                        );
+                      },
+                    );
+                  },
+                ),
+                ValueListenableBuilder<bool>(
+                  valueListenable: _isUnderlineNotifier,
+                  builder: (context, isUnderline, child) {
+                    return IconButton(
+                      icon: Icon(
+                        Icons.format_underline,
+                        color: isUnderline ? Colors.red : Colors.grey,
+                      ),
+                      onPressed: () {
+                        _quillController.formatSelection(
+                            isUnderline ? Attribute.clone(Attribute.underline, null) : Attribute.underline
+                        );
+                      },
+                    );
+                  },
+                ),
+                ValueListenableBuilder<Color?>(
+                  valueListenable: _currentTextColorNotifier,
+                  builder: (context, currentTextColor, child) {
+                    return IconButton(
+                      icon: Icon(
+                        Icons.palette,
+                        color: currentTextColor ?? Colors.grey,
+                      ),
+                      onPressed: () async {
+                        final currentColor = _quillController.getSelectionStyle().attributes['color']?.value;
+                        if (currentColor != null) {
+                          _quillController.formatSelection(Attribute.clone(Attribute.color, null));
+                        } else {
+                          final List<Color> colors = [
+                            Colors.black,
+                            Colors.white,
+                            Colors.grey,
+                            Colors.brown,
+                            Colors.red,
+                            Colors.redAccent,
+                            Colors.pink,
+                            Colors.pinkAccent,
+                            Colors.purple,
+                            Colors.purpleAccent,
+                            Colors.deepPurple,
+                            Colors.deepPurpleAccent,
+                            Colors.indigo,
+                            Colors.indigoAccent,
+                            Colors.blue,
+                            Colors.blueAccent,
+                            Colors.lightBlue,
+                            Colors.lightBlueAccent,
+                            Colors.cyan,
+                            Colors.cyanAccent,
+                            Colors.teal,
+                            Colors.tealAccent,
+                            Colors.green,
+                            Colors.greenAccent,
+                            Colors.lightGreen,
+                            Colors.lightGreenAccent,
+                            Colors.lime,
+                            Colors.limeAccent,
+                            Colors.yellow,
+                            Colors.yellowAccent,
+                            Colors.amber,
+                            Colors.amberAccent,
+                            Colors.orange,
+                            Colors.orangeAccent,
+                            Colors.deepOrange,
+                            Colors.deepOrangeAccent,
+                          ];
 
-                    if (selectedColor != null) {
-                      String hexColor = '#${selectedColor.value.toRadixString(16).substring(2)}';
-                      _quillController.formatSelection(Attribute.fromKeyValue('color', hexColor));
-                    }
+                          Color? selectedColor = await showDialog(
+                            context: context,
+                            builder: (BuildContext context) {
+                              return AlertDialog(
+                                title: const Text('Select color'),
+                                content: Container(
+                                  width: 350,
+                                  child: Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: colors.map((color) {
+                                      return InkWell(
+                                        onTap: () {
+                                          Navigator.of(context).pop(color);
+                                        },
+                                        child: Container(
+                                          width: 45,
+                                          height: 45,
+                                          decoration: BoxDecoration(
+                                            color: color,
+                                            border: Border.all(color: Colors.grey.shade300),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                        ),
+                                      );
+                                    }).toList(),
+                                  ),
+                                ),
+                                actions: <Widget>[
+                                  TextButton(
+                                    child: const Text('Hủy'),
+                                    onPressed: () {
+                                      Navigator.of(context).pop();
+                                    },
+                                  ),
+                                ],
+                              );
+                            },
+                          );
+
+                          if (selectedColor != null) {
+                            String hexColor = '#${selectedColor.value.toRadixString(16).substring(2)}';
+                            _quillController.formatSelection(Attribute.fromKeyValue('color', hexColor));
+                          }
+                        }
+                      },
+                    );
+                  },
+                ),
+                ValueListenableBuilder<bool>(
+                  valueListenable: _isH1Notifier,
+                  builder: (context, isH1, child) {
+                    return IconButton(
+                      icon: Text('H1', style: TextStyle(color: isH1 ? Colors.purple : Colors.grey, fontSize: 18)),
+                      onPressed: () {
+                        _quillController.formatSelection(
+                            isH1 ? Attribute.clone(Attribute.h1, null) : Attribute.h1
+                        );
+                      },
+                    );
+                  },
+                ),
+                ValueListenableBuilder<bool>(
+                  valueListenable: _isH2Notifier,
+                  builder: (context, isH2, child) {
+                    return IconButton(
+                      icon: Text('H2', style: TextStyle(color: isH2 ? Colors.purple : Colors.grey, fontSize: 16)),
+                      onPressed: () {
+                        _quillController.formatSelection(
+                            isH2 ? Attribute.clone(Attribute.h2, null) : Attribute.h2
+                        );
+                      },
+                    );
+                  },
+                ),
+                ValueListenableBuilder<bool>(
+                  valueListenable: _isH3Notifier,
+                  builder: (context, isH3, child) {
+                    return IconButton(
+                      icon: Text('H3', style: TextStyle(color: isH3 ? Colors.purple : Colors.grey, fontSize: 14)),
+                      onPressed: () {
+                        _quillController.formatSelection(
+                            isH3 ? Attribute.clone(Attribute.h3, null) : Attribute.h3
+                        );
+                      },
+                    );
                   },
                 ),
               ],
             ),
           ),
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            ),
-            child: QuillEditor.basic(
-              controller: _quillController,
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              _quillFocusNode.requestFocus();
+            },
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              height: 150,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              ),
+              child: QuillEditor.basic(
+                controller: _quillController,
+                scrollController: ScrollController(),
+                focusNode: _quillFocusNode,
 
+              ),
             ),
           ),
         ],
@@ -208,192 +330,221 @@ class _EditCardDialogState extends State<EditCardDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text('Edit Card'),
-      content: Container(
-        width: MediaQuery.of(context).size.width * 0.8,
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.7,
-          maxWidth: 400,
-        ),
-        child: Scrollbar(
-          controller: _scrollController,
-          thumbVisibility: true,
-          child: SingleChildScrollView(
+    return MediaQuery(
+      data: MediaQuery.of(context).copyWith(
+        viewInsets: EdgeInsets.zero,
+      ),
+      child: AlertDialog(
+        scrollable: true,
+        title: Text('Edit Card'),
+        content: Container(
+          width: MediaQuery.of(context).size.width * 0.8,
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.7,
+            maxWidth: 400,
+          ),
+          child: Scrollbar(
             controller: _scrollController,
-            padding: EdgeInsets.only(right: 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                TextField(
-                  decoration: InputDecoration(
-                    labelText: 'Video ID',
-                    labelStyle: TextStyle(color: Colors.grey),
-                    suffixIcon: IconButton(
-                      icon: Icon(Icons.open_in_new),
-                      onPressed: () async {
-                        final startTime = double.tryParse(_startTimeController.text) ?? _editedCard.startTime;
-                        final url = 'https://youtu.be/${_editedCard.videoId}?t=${startTime.round()}';
-                        try {
-                          final uri = Uri.parse(url);
-                          if (await canLaunchUrl(uri)) {
-                            await launchUrl(uri);
+            thumbVisibility: true,
+            child: SingleChildScrollView(
+              controller: _scrollController,
+              padding: EdgeInsets.only(right: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  TextField(
+                    decoration: InputDecoration(
+                      labelText: 'Video ID',
+                      labelStyle: TextStyle(color: Colors.grey),
+                      suffixIcon: IconButton(
+                        icon: Icon(Icons.open_in_new),
+                        onPressed: () async {
+                          final startTime = double.tryParse(_startTimeController.text) ?? _editedCard.startTime;
+                          final url = 'https://youtu.be/${_editedCard.videoId}?t=${startTime.round()}';
+                          try {
+                            final uri = Uri.parse(url);
+                            if (await canLaunchUrl(uri)) {
+                              await launchUrl(uri);
+                            }
+                          } catch (e) {
+                            print('Error launching URL: $e');
                           }
-                        } catch (e) {
-                          print('Error launching URL: $e');
-                        }
-                      },
-                      tooltip: 'Open in YouTube',
+                        },
+                        tooltip: 'Open in YouTube',
+                      ),
                     ),
+                    controller: TextEditingController(text: _editedCard.videoId),
+                    readOnly: true,  // Giữ readOnly nhưng bỏ enabled: false
+                    style: TextStyle(color: Colors.grey[600]),
                   ),
-                  controller: TextEditingController(text: _editedCard.videoId),
-                  readOnly: true,  // Giữ readOnly nhưng bỏ enabled: false
-                  style: TextStyle(color: Colors.grey[600]),
-                ),
 
-                TextField(
-                  decoration: InputDecoration(labelText: 'Video Title'),
-                  controller: _videoTitleController,
-                ),
-                TextField(
-                  decoration: InputDecoration(labelText: 'Start Time'),
-                  controller: _startTimeController,
-                  keyboardType: TextInputType.number,
-                ),
-                TextField(
-                  decoration: InputDecoration(labelText: 'End Time'),
-                  controller: _endTimeController,
-                  keyboardType: TextInputType.number,
-                ),
-                Column(
-                  children: [
-                    // Thay TextField bằng _buildQuillEditor()
-                    _buildQuillEditor(),
-                  ],
-                ),
-                DropdownButtonFormField<double>(
-                  value: _selectedVideoSpeed,
-                  decoration: InputDecoration(labelText: 'Video Speed'),
-                  items: _videoSpeedOptions.map((speed) {
-                    return DropdownMenuItem<double>(
-                      value: speed,
-                      child: Text(speed.toStringAsFixed(2)),
-                    );
-                  }).toList(),
-                  onChanged: (double? newValue) {
-                    if (newValue != null) {
-                      setState(() {
-                        _selectedVideoSpeed = newValue;
-                      });
-                    }
-                  },
-                ),
-                DropdownButtonFormField<double>(
-                  value: _selectedMaxVideoSpeed,
-                  decoration: InputDecoration(labelText: 'Max Video Speed (only for Speed Deck)'),
-                  items: _maxVideoSpeedOptions.map((speed) {
-                    return DropdownMenuItem<double>(
-                      value: speed,
-                      child: Text(speed.toString()),
-                    );
-                  }).toList(),
-                  onChanged: (double? newValue) {
-                    if (newValue != null) {
-                      setState(() {
-                        _selectedMaxVideoSpeed = newValue;
-                      });
-                    }
-                  },
-                ),
-                StreamBuilder<List<Deck>>(
-                  stream: _deckService.getDecks(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return CircularProgressIndicator();
-                    }
-                    if (snapshot.hasError) {
-                      return Text('Error: ${snapshot.error}');
-                    }
-                    final decks = snapshot.data ?? [];
-                    return DropdownButtonFormField<String>(
-                      value: _selectedDeckId,
-                      decoration: InputDecoration(labelText: 'Deck'),
-                      items: decks.map((deck) {
-                        return DropdownMenuItem<String>(
-                          value: deck.id,
-                          child: Text(deck.name),
-                        );
-                      }).toList(),
-                      onChanged: (String? newValue) {
+                  TextField(
+                    decoration: InputDecoration(labelText: 'Video Title'),
+                    controller: _videoTitleController,
+                  ),
+                  TextField(
+                    decoration: InputDecoration(labelText: 'Start Time'),
+                    controller: _startTimeController,
+                    keyboardType: TextInputType.number,
+                  ),
+                  TextField(
+                    decoration: InputDecoration(labelText: 'End Time'),
+                    controller: _endTimeController,
+                    keyboardType: TextInputType.number,
+                  ),
+                  Column(
+                    children: [
+                      // Thay TextField bằng _buildQuillEditor()
+                      _buildQuillEditor(),
+                    ],
+                  ),
+                  DropdownButtonFormField<double>(
+                    value: _selectedVideoSpeed,
+                    decoration: InputDecoration(labelText: 'Video Speed'),
+                    items: _videoSpeedOptions.map((speed) {
+                      return DropdownMenuItem<double>(
+                        value: speed,
+                        child: Text(speed.toStringAsFixed(2)),
+                      );
+                    }).toList(),
+                    onChanged: (double? newValue) {
+                      if (newValue != null) {
                         setState(() {
-                          _selectedDeckId = newValue;
+                          _selectedVideoSpeed = newValue;
                         });
-                      },
-                    );
-                  },
-                ),
-                SizedBox(height: 16),
-                _buildReadOnlySection(),
-                _buildReviewHistorySection(_editedCard),
-              ],
+                      }
+                    },
+                  ),
+                  DropdownButtonFormField<double>(
+                    value: _selectedMaxVideoSpeed,
+                    decoration: InputDecoration(labelText: 'Max Video Speed (only for Speed Deck)'),
+                    items: _maxVideoSpeedOptions.map((speed) {
+                      return DropdownMenuItem<double>(
+                        value: speed,
+                        child: Text(speed.toString()),
+                      );
+                    }).toList(),
+                    onChanged: (double? newValue) {
+                      if (newValue != null) {
+                        setState(() {
+                          _selectedMaxVideoSpeed = newValue;
+                        });
+                      }
+                    },
+                  ),
+                  StreamBuilder<List<Deck>>(
+                    stream: _deckService.getDecks(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return CircularProgressIndicator();
+                      }
+                      if (snapshot.hasError) {
+                        return Text('Error: ${snapshot.error}');
+                      }
+                      final decks = snapshot.data ?? [];
+                      return DropdownButtonFormField<String>(
+                        value: _selectedDeckId,
+                        decoration: InputDecoration(labelText: 'Deck'),
+                        items: decks.map((deck) {
+                          return DropdownMenuItem<String>(
+                            value: deck.id,
+                            child: Text(deck.name),
+                          );
+                        }).toList(),
+                        onChanged: (String? newValue) {
+                          setState(() {
+                            _selectedDeckId = newValue;
+                          });
+                        },
+                      );
+                    },
+                  ),
+                  SizedBox(height: 16),
+                  _buildReadOnlySection(),
+                  _buildReviewHistorySection(_editedCard),
+                ],
+              ),
             ),
           ),
         ),
-      ),
-      actions: <Widget>[
-        TextButton(
-          child: Text('Cancel'),
-          onPressed: () {
-            Navigator.of(context).pop();
-          },
-        ),
-        TextButton(
-          child: Text('Save'),
-          onPressed: () {
-            if (_selectedVideoSpeed > _selectedMaxVideoSpeed) {
-              showDialog(
-                context: context,
-                builder: (BuildContext context) {
-                  return AlertDialog(
-                    title: Text('Invalid Video Speed'),
-                    content: Text('Video Speed cannot be greater than Max Video Speed.'),
-                    actions: <Widget>[
-                      TextButton(
-                        child: Text('OK'),
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                        },
-                      ),
-                    ],
-                  );
-                },
-              );
-            } else {
-              // Convert the Quill document to JSON
-              final json = jsonEncode(_quillController.document.toDelta().toJson());
+        actions: <Widget>[
+          TextButton(
+            child: Text('Cancel'),
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+          ),
+          TextButton(
+            child: Text('Save'),
+            onPressed: () {
+              final startTime = double.tryParse(_startTimeController.text) ?? _editedCard.startTime;
+              final endTime = double.tryParse(_endTimeController.text) ?? _editedCard.endTime;
 
-              final updatedCard = _editedCard.copyWith(
-                videoId: _editedCard.videoId,
-                videoTitle: _videoTitleController.text,
-                startTime: double.tryParse(_startTimeController.text) ?? _editedCard.startTime,
-                endTime: double.tryParse(_endTimeController.text) ?? _editedCard.endTime,
-                answer: json, // Store the JSON string instead of plain text
-                deckId: _selectedDeckId,
-                videoSpeed: _selectedVideoSpeed,
-                maxVideoSpeed: _selectedMaxVideoSpeed,
-                createdAt: _editedCard.createdAt ?? DateTime.now(),
-                dueDate: _editedCard.dueDate ?? DateTime.now(),
-                reviewDates: _editedCard.reviewDates ?? [],
-                ratings: _editedCard.ratings ?? [],
-                interval: _editedCard.interval ?? 0,
-                overdue: _editedCard.overdue ?? 0,
-              );
-              widget.onSave(updatedCard);
-              Navigator.of(context).pop(true);
-            }
-          },
-        ),
-      ],
+              // Check điều kiện end time phải lớn hơn start time ít nhất 0.5s
+              if (endTime < startTime + 0.5) {
+                showDialog(
+                  context: context,
+                  builder: (BuildContext context) {
+                    return AlertDialog(
+                      title: Text('Invalid Time Range'),
+                      content: Text('End time must be at least 0.5 seconds greater than start time'),
+                      actions: <Widget>[
+                        TextButton(
+                          child: Text('OK'),
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                          },
+                        ),
+                      ],
+                    );
+                  },
+                );
+              }
+              else if (_selectedVideoSpeed > _selectedMaxVideoSpeed) {
+                showDialog(
+                  context: context,
+                  builder: (BuildContext context) {
+                    return AlertDialog(
+                      title: Text('Invalid Video Speed'),
+                      content: Text('Video Speed cannot be greater than Max Video Speed.'),
+                      actions: <Widget>[
+                        TextButton(
+                          child: Text('OK'),
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                          },
+                        ),
+                      ],
+                    );
+                  },
+                );
+              } else {
+                // Convert the Quill document to JSON
+                final json = jsonEncode(_quillController.document.toDelta().toJson());
+
+                final updatedCard = _editedCard.copyWith(
+                  videoId: _editedCard.videoId,
+                  videoTitle: _videoTitleController.text,
+                  startTime: double.tryParse(_startTimeController.text) ?? _editedCard.startTime,
+                  endTime: double.tryParse(_endTimeController.text) ?? _editedCard.endTime,
+                  answer: json, // Store the JSON string instead of plain text
+                  deckId: _selectedDeckId,
+                  videoSpeed: _selectedVideoSpeed,
+                  maxVideoSpeed: _selectedMaxVideoSpeed,
+                  createdAt: _editedCard.createdAt ?? DateTime.now(),
+                  dueDate: _editedCard.dueDate ?? DateTime.now(),
+                  reviewDates: _editedCard.reviewDates ?? [],
+                  ratings: _editedCard.ratings ?? [],
+                  interval: _editedCard.interval ?? 0,
+                  overdue: _editedCard.overdue ?? 0,
+                );
+                widget.onSave(updatedCard);
+                Navigator.of(context).pop(true);
+              }
+            },
+          ),
+        ],
+      ),
     );
   }
 

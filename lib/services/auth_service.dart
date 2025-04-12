@@ -1,11 +1,14 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'user_service.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
-    clientId: kIsWeb ? 'YOUR_WEB_CLIENT_ID.apps.googleusercontent.com' : null,
+  final UserService _userService = UserService();
+  
+  // Chỉ khởi tạo GoogleSignIn cho mobile
+  final GoogleSignIn? _googleSignIn = kIsWeb ? null : GoogleSignIn(
     scopes: [
       'email',
       'profile',
@@ -15,7 +18,6 @@ class AuthService {
   Stream<User?> get authStateChanges => _auth.authStateChanges();
   User? get currentUser => _auth.currentUser;
 
-  // Thêm phương thức này để khởi tạo persistence
   Future<void> initializeAuth() async {
     if (kIsWeb) {
       await _auth.setPersistence(Persistence.LOCAL);
@@ -24,18 +26,21 @@ class AuthService {
 
   Future<UserCredential?> signInWithGoogle() async {
     try {
+      UserCredential? userCredential;
+      
       if (kIsWeb) {
+        // Sử dụng signInWithPopup cho web
         GoogleAuthProvider googleProvider = GoogleAuthProvider();
         googleProvider
           ..addScope('email')
           ..addScope('profile')
           ..setCustomParameters({
-            'login_hint': '',
             'prompt': 'select_account'
           });
-        return await _auth.signInWithPopup(googleProvider);
+        userCredential = await _auth.signInWithPopup(googleProvider);
       } else {
-        final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+        // Sử dụng GoogleSignIn cho mobile
+        final GoogleSignInAccount? googleUser = await _googleSignIn?.signIn();
         if (googleUser == null) return null;
 
         final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
@@ -44,8 +49,15 @@ class AuthService {
           idToken: googleAuth.idToken,
         );
 
-        return await _auth.signInWithCredential(credential);
+        userCredential = await _auth.signInWithCredential(credential);
       }
+
+      if (userCredential != null) {
+        await _userService.initializeUserPreferences();
+        print('Đã khởi tạo user preferences');
+      }
+
+      return userCredential;
     } catch (e) {
       print('Error signing in with Google: $e');
       rethrow;
@@ -56,7 +68,7 @@ class AuthService {
     try {
       await Future.wait([
         _auth.signOut(),
-        if (!kIsWeb) _googleSignIn.signOut(),
+        if (!kIsWeb && _googleSignIn != null) _googleSignIn!.signOut(),
       ]);
     } catch (e) {
       print('Error during sign out: $e');
