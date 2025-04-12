@@ -1,35 +1,50 @@
 workflows:
-  flutter-ios-workflow:
-    name: Flutter iOS Build
+  ios-workflow:
+    name: iOS Workflow
+    instance_type: mac_mini_m1
     max_build_duration: 120
     environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.yourdomain.youtubeplayer # Thay đổi theo bundle ID của bạn
       flutter: stable
       xcode: latest
       cocoapods: default
+    cache:
+      cache_paths:
+        - ~/.pub-cache
+        - $FLUTTER_ROOT/.pub-cache
+        - $FCI_BUILD_DIR/build
     scripts:
-      - name: Install Flutter dependencies
-        script: |
+      - name: Set up code signing settings on Xcode project
+        script: | 
+          xcode-project use-profiles
+      - name: Install dependencies
+        script: | 
           flutter pub get
-          # Đảm bảo tạo thư mục .symlinks/plugins/
-          flutter precache --ios
-      - name: Update CocoaPods repository
-        script: |
-          pod repo update
-      - name: Build iOS IPA
-        script: |
-          flutter build ios --release --no-codesign
-          if [ -d "build/ios/iphoneos" ]; then
-            cd build/ios/iphoneos
-            mkdir Payload
-            mv Runner.app Payload/
-            zip -r app.ipa Payload
-          else
-            echo "Error: build/ios/iphoneos directory not found. Build failed."
-            exit 1
-          fi
+      - name: Install pods
+        script: | 
+          find . -name "Podfile" -execdir pod install \;
+      - name: Flutter build ipa
+        script: | 
+          flutter build ipa --release \
+            --build-name=$(($BUILD_NUMBER)) \
+            --build-number=$(($BUILD_NUMBER)) \
+            --export-options-plist=/Users/builder/export_options.plist
     artifacts:
-      - build/ios/iphoneos/*.ipa
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - flutter_drive.log
     publishing:
       email:
         recipients:
-          - ghostsoul26@gmail.com
+          - your.email@example.com # Thay đổi email của bạn
+        notify:
+          success: true
+          failure: true
+      app_store_connect:
+        auth: integration
+        # Các giá trị key được định cấu hình trong cài đặt dự án CodeMagic
+        # Bạn cần tạo App Store Connect API key và cung cấp nó cho CodeMagic
+        submit_to_testflight: true
+        submit_to_app_store: false 
