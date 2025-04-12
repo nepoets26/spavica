@@ -12,7 +12,8 @@ workflows:
           flutter pub get
       - name: Build iOS IPA
         script: |
-          flutter build ipa --release
+          flutter build ios --release --no-codesign
+
     artifacts:
       - build/ios/iphoneos/*.ipa
     publishing:
