@@ -4,22 +4,23 @@ target 'Runner' do
   use_frameworks!
   use_modular_headers!
 
-  # Thêm các Pods thủ công dựa trên dependencies trong pubspec.yaml
+  # Firebase dependencies
   pod 'Firebase/Core'
   pod 'Firebase/Auth'
   pod 'Firebase/Firestore'
-  pod 'GoogleSignIn'
-  # Thêm các Pods khác nếu cần (dựa trên pubspec.yaml)
 
-  # Nếu bạn có các plugin Flutter khác, bạn có thể thêm chúng ở đây
-  # Ví dụ:
-  # pod 'flutter_inappwebview', :path => '.symlinks/plugins/flutter_inappwebview/ios'
+  # Google Sign-In
+  pod 'GoogleSignIn'
+
+  # Nếu có các plugin khác cần Pods, thêm ở đây
 end
 
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
+      # Đảm bảo Swift version tương thích với Firebase
+      config.build_settings['SWIFT_VERSION'] = '5.0'
     end
   end
 end
