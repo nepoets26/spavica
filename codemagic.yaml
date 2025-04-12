@@ -1,41 +1,25 @@
 workflows:
-  ios-local-build:
-    name: iOS Local Build
-    instance_type: mac_mini_m1
+  flutter-ios-workflow:
+    name: Flutter iOS Build
     max_build_duration: 120
     environment:
-      ios_signing:
-        distribution_type: development # Thay đổi thành development để sử dụng local
-      flutter: stable
+      flutter: stable # Hoặc phiên bản Flutter cụ thể, ví dụ: 3.10.0
       xcode: latest
       cocoapods: default
-    cache:
-      cache_paths:
-        - ~/.pub-cache
-        - $FLUTTER_ROOT/.pub-cache
-        - $FCI_BUILD_DIR/build
     scripts:
-      - name: Install dependencies
-        script: | 
+      - name: Install Flutter dependencies
+        script: |
           flutter pub get
-      - name: Install pods
-        script: | 
-          find . -name "Podfile" -execdir pod install \;
-      - name: Flutter build ipa
-        script: | 
+      - name: Build iOS IPA
+        script: |
           flutter build ios --release --no-codesign
           cd build/ios/iphoneos
           mkdir Payload
-          cp -r Runner.app Payload
+          mv Runner.app Payload/
           zip -r app.ipa Payload
     artifacts:
-      - build/ios/iphoneos/app.ipa
-      - /tmp/xcodebuild_logs/*.log
-      - flutter_drive.log
+      - build/ios/iphoneos/*.ipa
     publishing:
       email:
         recipients:
-          - your.email@example.com # Thay đổi email của bạn
-        notify:
-          success: true
-          failure: true 
+          - ghostsoul26@gmail.com # Thay bằng email của bạn
