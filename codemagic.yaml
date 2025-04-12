@@ -12,7 +12,7 @@ workflows:
           flutter pub get
       - name: Install CocoaPods dependencies
         script: |
-          rm -rf ios 
+          rm -rf ios/ 
           flutter create
           cd ios
           pod install --repo-update
