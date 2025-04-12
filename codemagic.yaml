@@ -10,6 +10,8 @@ workflows:
       - name: Install Flutter dependencies
         script: |
           flutter pub get
+          # Đảm bảo tạo thư mục .symlinks/plugins/
+          flutter precache --ios
       - name: Update CocoaPods repository
         script: |
           pod repo update

@@ -12,13 +12,8 @@ target 'Runner' do
   # Khai báo GoogleSignIn
   pod 'GoogleSignIn'
 
-
-  # Khai báo các plugin Flutter khác với đường dẫn local
-  pod 'flutter_inappwebview', :path => '.symlinks/plugins/flutter_inappwebview/ios'
-  pod 'pointer_interceptor', :path => '.symlinks/plugins/pointer_interceptor/ios'
-  pod 'google_sign_in_ios', :path => '.symlinks/plugins/google_sign_in_ios/darwin'
-  pod 'irondash_engine_context', :path => '.symlinks/plugins/irondash_engine_context/ios'
-  pod 'super_native_extensions', :path => '.symlinks/plugins/super_native_extensions/ios'
+  # Bỏ qua device_info_plus và các plugin khác cần .symlinks/plugins/
+  # Nếu cần, bạn có thể thêm các Pods khác có sẵn trên CocoaPods trunk
 end
 
 post_install do |installer|
