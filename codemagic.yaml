@@ -3,23 +3,31 @@ workflows:
     name: Flutter iOS Build
     max_build_duration: 120
     environment:
-      flutter: stable # Hoặc phiên bản Flutter cụ thể, ví dụ: 3.10.0
+      flutter: stable
       xcode: latest
       cocoapods: default
     scripts:
       - name: Install Flutter dependencies
         script: |
           flutter pub get
+      - name: Update CocoaPods repository
+        script: |
+          pod repo update
       - name: Build iOS IPA
         script: |
           flutter build ios --release --no-codesign
-          cd build/ios/iphoneos
-          mkdir Payload
-          mv Runner.app Payload/
-          zip -r app.ipa Payload
+          if [ -d "build/ios/iphoneos" ]; then
+            cd build/ios/iphoneos
+            mkdir Payload
+            mv Runner.app Payload/
+            zip -r app.ipa Payload
+          else
+            echo "Error: build/ios/iphoneos directory not found. Build failed."
+            exit 1
+          fi
     artifacts:
       - build/ios/iphoneos/*.ipa
     publishing:
       email:
         recipients:
-          - spavica.com@gmail.com # Thay bằng email của bạn
+          - ghostsoul26@gmail.com

@@ -4,17 +4,23 @@ target 'Runner' do
   use_frameworks!
   use_modular_headers!
 
-  # Thêm các Pods thủ công dựa trên dependencies trong pubspec.yaml
+  # Khai báo các Pods của Firebase
   pod 'Firebase/Core'
   pod 'Firebase/Auth'
   pod 'Firebase/Firestore'
-  pod 'GoogleSignIn'
-  pod 'device_info_plus'
-  # Thêm các Pods khác nếu cần (dựa trên pubspec.yaml)
 
-  # Nếu bạn có các plugin Flutter khác, bạn có thể thêm chúng ở đây
-  # Ví dụ:
-  # pod 'flutter_inappwebview', :path => '.symlinks/plugins/flutter_inappwebview/ios'
+  # Khai báo GoogleSignIn
+  pod 'GoogleSignIn'
+
+  # Khai báo device_info_plus với đường dẫn local
+  pod 'device_info_plus', :path => '.symlinks/plugins/device_info_plus/ios'
+
+  # Khai báo các plugin Flutter khác với đường dẫn local
+  pod 'flutter_inappwebview', :path => '.symlinks/plugins/flutter_inappwebview/ios'
+  pod 'pointer_interceptor', :path => '.symlinks/plugins/pointer_interceptor/ios'
+  pod 'google_sign_in_ios', :path => '.symlinks/plugins/google_sign_in_ios/darwin'
+  pod 'irondash_engine_context', :path => '.symlinks/plugins/irondash_engine_context/ios'
+  pod 'super_native_extensions', :path => '.symlinks/plugins/super_native_extensions/ios'
 end
 
 post_install do |installer|
