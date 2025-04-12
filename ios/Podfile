@@ -12,8 +12,6 @@ target 'Runner' do
   # Khai báo GoogleSignIn
   pod 'GoogleSignIn'
 
-  # Khai báo device_info_plus với đường dẫn local
-  pod 'device_info_plus', :path => '.symlinks/plugins/device_info_plus/ios'
 
   # Khai báo các plugin Flutter khác với đường dẫn local
   pod 'flutter_inappwebview', :path => '.symlinks/plugins/flutter_inappwebview/ios'
