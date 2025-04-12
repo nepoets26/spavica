@@ -9,7 +9,6 @@ target 'Runner' do
   pod 'Firebase/Auth'
   pod 'Firebase/Firestore'
   pod 'GoogleSignIn'
-  pod 'device_info_plus'
   # Thêm các Pods khác nếu cần (dựa trên pubspec.yaml)
 
   # Nếu bạn có các plugin Flutter khác, bạn có thể thêm chúng ở đây
